@@ -1,6 +1,6 @@
 {
   "name": "window-layout-manager",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Save and restore window layouts across monitors and sessions on Windows",
   "main": "dist/main/main.js",
   "scripts": {
@@ -36,7 +36,7 @@
     "appId": "com.windowlayoutmanager.app",
     "productName": "Window Layout Manager",
     "directories": {
-      "output": "release"
+      "output": "dist-release"
     },
     "files": [
       "dist/**/*",
@@ -45,6 +45,10 @@
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
     }
   }
 }
