@@ -36,6 +36,7 @@
   "build": {
     "appId": "com.windowlayoutmanager.app",
     "productName": "Window Layout Manager",
+    "publish": null,
     "directories": {
       "output": "dist-release"
     },
