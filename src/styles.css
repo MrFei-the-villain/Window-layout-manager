@@ -1598,3 +1598,13 @@ body {
   border-color: var(--accent-primary);
   color: #ffffff;
 }
+
+/* 12-hour time picker */
+.meridiem-select {
+  width: 72px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  color-scheme: dark;
+  text-align: center;
+  font-weight: 600;
+  color: var(--accent-primary);
+}

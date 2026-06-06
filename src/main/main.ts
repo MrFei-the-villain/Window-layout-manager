@@ -105,9 +105,11 @@ function bootstrap(): void {
   };
 
   const createTray = (): void => {
-    const iconPath = path.join(__dirname, '../assets/icon.png');
+    // Tray icons should be native 16x16 for crisp rendering on standard DPI
+    // displays. We have a dedicated rasterized asset for exactly this size.
+    const iconPath = path.join(__dirname, '../assets/icon-16.png');
     const icon = nativeImage.createFromPath(iconPath);
-    tray = new Tray(icon.resize({ width: 16, height: 16 }));
+    tray = new Tray(icon);
 
     const contextMenu = Menu.buildFromTemplate([
       { label: 'Open Window Layout Manager', click: () => mainWindow?.show() },

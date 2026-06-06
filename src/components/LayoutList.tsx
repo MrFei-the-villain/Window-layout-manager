@@ -12,6 +12,32 @@ function newScheduleId(): string {
   return 'sch_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
+/** Convert a 24-hour "HH:MM" string to 12-hour "H:MM" (no leading zero on hour). */
+function to12Hour(hhmm: string): string {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((hhmm || '').trim());
+  if (!m) return '9:00';
+  const h24 = parseInt(m[1], 10);
+  const mm = m[2];
+  const h12 = ((h24 + 11) % 12) + 1; // 0->12, 13->1, 12->12
+  return `${h12}:${mm}`;
+}
+
+/** "AM" | "PM" from a 24-hour "HH:MM" string. */
+function meridiemOf(hhmm: string): 'AM' | 'PM' {
+  const m = /^(\d{1,2})/.exec((hhmm || '').trim());
+  if (!m) return 'AM';
+  return parseInt(m[1], 10) >= 12 ? 'PM' : 'AM';
+}
+
+/** Combine a 12-hour "H:MM" string and a meridiem into a 24-hour "HH:MM" string. */
+function to24Hour(h12: string, meridiem: 'AM' | 'PM'): string {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((h12 || '').trim());
+  if (!m) return '09:00';
+  let h = parseInt(m[1], 10) % 12; // 12 -> 0
+  if (meridiem === 'PM') h += 12;
+  return `${String(h).padStart(2, '0')}:${m[2]}`;
+}
+
 export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
   const [layouts, setLayouts] = useState<SavedLayout[]>([]);
   const [loading, setLoading] = useState(true);
@@ -366,9 +392,18 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
                     <input
                       type="time"
                       className="input time-input"
-                      value={sched.time}
-                      onChange={(e) => updateSchedule(layout, sched.id, { time: e.target.value })}
+                      value={to12Hour(sched.time)}
+                      onChange={(e) => updateSchedule(layout, sched.id, { time: to24Hour(e.target.value, meridiemOf(sched.time)) })}
                     />
+                    <select
+                      className="input meridiem-select"
+                      value={meridiemOf(sched.time)}
+                      onChange={(e) => updateSchedule(layout, sched.id, { time: to24Hour(to12Hour(sched.time), e.target.value as 'AM' | 'PM') })}
+                      aria-label="AM or PM"
+                    >
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
                     <label className="schedule-launch">
                       <input
                         type="checkbox"
