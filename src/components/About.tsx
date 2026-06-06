@@ -25,7 +25,7 @@ export function About({ addToast: _addToast }: AboutProps) {
           </svg>
           <div>
             <h2>Window Layout Manager</h2>
-            <p className="about-version">Version 1.0.3</p>
+            <p className="about-version">Version 1.1.0</p>
           </div>
         </div>
 
