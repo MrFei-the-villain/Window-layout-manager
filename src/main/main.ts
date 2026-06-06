@@ -1,8 +1,10 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut, shell, dialog } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import { WindowManager } from './windowManager';
 import { LayoutStore } from './layoutStore';
 import { MonitorWatcher } from './monitorWatcher';
+import { AppSettings, Schedule, SavedLayout } from './types';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -31,7 +33,6 @@ if (!gotTheLock) {
     if (app.requestSingleInstanceLock()) {
       clearInterval(retryInterval);
       console.log('[WLM] Acquired lock after', attempts, 'attempt(s). Bootstrapping as new active instance.');
-      // We are now the new active instance. The previous one is gone.
       app.on('second-instance', () => {
         console.log('[WLM] Second instance detected — quitting this instance so the new one can take over.');
         isQuitting = true;
@@ -46,8 +47,6 @@ if (!gotTheLock) {
     }
   }, 100);
 } else {
-  // We are the first/only instance. When another instance starts,
-  // quit so the new one can take over.
   app.on('second-instance', () => {
     console.log('[WLM] Second instance detected — quitting this instance so the new one can take over.');
     isQuitting = true;
@@ -58,7 +57,16 @@ if (!gotTheLock) {
   bootstrap();
 }
 
+// ---------- Startup arguments ----------
+// We support `--hidden` (passed by our own login item entry when the
+// user has "Start minimized" enabled) to begin life in the tray.
+const startedHidden = process.argv.includes('--hidden') || process.argv.includes('--openAsHidden');
+
 function bootstrap(): void {
+  // Build a deferred-start wrapper. The window is created hidden
+  // immediately if we were launched with --hidden, so the tray icon is
+  // the only thing the user sees. They can open the main window from
+  // the tray at any time.
   const createWindow = (): void => {
     mainWindow = new BrowserWindow({
       width: 900,
@@ -68,6 +76,7 @@ function bootstrap(): void {
       frame: false,
       transparent: false,
       resizable: true,
+      show: !startedHidden,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -119,6 +128,119 @@ function bootstrap(): void {
       mainWindow?.show();
     });
   };
+
+  // ---------- Login item (Start with Windows) ----------
+  function applyLoginItemSettings(s: AppSettings): void {
+    try {
+      // If startWithWindows is on, register our app. The args flag carries
+      // `--hidden` so the launched process starts minimized (handled in
+      // `startedHidden` above).
+      const args = s.startMinimized ? ['--hidden'] : [];
+      app.setLoginItemSettings({
+        openAtLogin: s.startWithWindows,
+        openAsHidden: s.startMinimized,
+        args
+      });
+    } catch (error) {
+      console.error('[WLM] Failed to set login item settings:', error);
+    }
+  }
+
+  // ---------- Global hotkeys ----------
+  // We register/unregister hotkeys for layouts as they change. The accelerator
+  // format follows Electron's `globalShortcut` rules (e.g. "CommandOrControl+Alt+1").
+  function registerAllHotkeys(): void {
+    globalShortcut.unregisterAll();
+    if (!layoutStore) return;
+    const layouts = layoutStore.getAllLayouts();
+    for (const layout of layouts) {
+      if (layout.hotkey && layout.hotkey.trim()) {
+        const ok = globalShortcut.register(layout.hotkey, () => {
+          console.log('[WLM] Hotkey fired for layout:', layout.name);
+          triggerLayoutRestore(layout, false);
+        });
+        if (!ok) {
+          console.warn('[WLM] Failed to register hotkey', layout.hotkey, 'for layout', layout.name);
+        }
+      }
+    }
+  }
+
+  async function triggerLayoutRestore(layout: SavedLayout, launchApps: boolean): Promise<void> {
+    try {
+      const result = launchApps
+        ? await windowManager.restoreLayout(layout, true)
+        : await windowManager.restoreLayout(layout, false);
+      console.log('[WLM] Hotkey restore result:', result);
+      // Briefly show the main window so the user gets visual feedback.
+      if (mainWindow) {
+        mainWindow.show();
+        mainWindow.webContents.send('hotkey-restored', { layoutName: layout.name, result });
+      }
+    } catch (error) {
+      console.error('[WLM] Hotkey restore error:', error);
+    }
+  }
+
+  // ---------- Scheduler ----------
+  // Track which (scheduleId, dayKey) tuples have already fired today so
+  // we don't keep re-firing while the loop is ticking at sub-minute granularity.
+  const firedToday = new Map<string, string>(); // scheduleId -> "YYYY-MM-DD"
+  let schedulerTimer: NodeJS.Timeout | null = null;
+
+  function dayKey(d: Date): string {
+    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  }
+
+  function parseHHMM(s: string): { h: number; m: number } | null {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
+    if (!m) return null;
+    const h = parseInt(m[1], 10);
+    const mm = parseInt(m[2], 10);
+    if (h < 0 || h > 23 || mm < 0 || mm > 59) return null;
+    return { h, m: mm };
+  }
+
+  function tickScheduler(): void {
+    if (!layoutStore) return;
+    const settings = layoutStore.getSettings();
+    if (!settings.schedulesEnabled) return;
+    const layouts = layoutStore.getAllLayouts();
+    const now = new Date();
+    const dayK = dayKey(now);
+
+    for (const layout of layouts) {
+      const schedules = layout.schedules || [];
+      for (const sched of schedules) {
+        const parsed = parseHHMM(sched.time);
+        if (!parsed) continue;
+        if (!sched.days.includes(now.getDay())) continue;
+        if (now.getHours() === parsed.h && now.getMinutes() === parsed.m) {
+          if (firedToday.get(sched.id) === dayK) continue;
+          firedToday.set(sched.id, dayK);
+          console.log('[WLM] Schedule fired:', sched.time, 'layout:', layout.name, 'launchApps:', sched.launchApps);
+          triggerLayoutRestore(layout, !!sched.launchApps);
+        }
+      }
+    }
+  }
+
+  function startScheduler(): void {
+    stopScheduler();
+    // Tick every 20s — fine enough to not miss minute boundaries, but
+    // not so often that we waste cycles.
+    schedulerTimer = setInterval(tickScheduler, 20 * 1000);
+    // Also tick once on startup in case the app was launched into a time
+    // that matches a schedule (e.g. the user rebooted at 09:00).
+    setTimeout(tickScheduler, 2000);
+  }
+
+  function stopScheduler(): void {
+    if (schedulerTimer) {
+      clearInterval(schedulerTimer);
+      schedulerTimer = null;
+    }
+  }
 
   const setupIpcHandlers = (): void => {
     ipcMain.handle('get-all-windows', async () => {
@@ -197,11 +319,17 @@ function bootstrap(): void {
     });
 
     ipcMain.handle('delete-layout', async (_event, layoutId: string) => {
-      return layoutStore.deleteLayout(layoutId);
+      const ok = layoutStore.deleteLayout(layoutId);
+      if (ok) registerAllHotkeys();
+      return ok;
     });
 
     ipcMain.handle('update-layout', async (_event, layoutId: string, updates: any) => {
-      return layoutStore.updateLayout(layoutId, updates);
+      const updated = layoutStore.updateLayout(layoutId, updates);
+      if (updated && 'hotkey' in updates) {
+        registerAllHotkeys();
+      }
+      return updated;
     });
 
     ipcMain.handle('get-current-layout-name', async () => {
@@ -231,6 +359,78 @@ function bootstrap(): void {
     ipcMain.handle('is-maximized', () => {
       return mainWindow?.isMaximized() ?? false;
     });
+
+    // ---------- Settings IPC ----------
+
+    ipcMain.handle('get-settings', async () => {
+      return layoutStore.getSettings();
+    });
+
+    ipcMain.handle('update-settings', async (_event, updates: Partial<AppSettings>) => {
+      const updated = layoutStore.updateSettings(updates);
+      // Re-apply login item registration when relevant flags change.
+      if ('startWithWindows' in updates || 'startMinimized' in updates) {
+        applyLoginItemSettings(updated);
+      }
+      return updated;
+    });
+
+    ipcMain.handle('choose-layout-folder', async () => {
+      if (!mainWindow) return null;
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Choose folder for layout JSON files',
+        properties: ['openDirectory', 'createDirectory'],
+        buttonLabel: 'Use this folder'
+      });
+      if (result.canceled || result.filePaths.length === 0) return null;
+      const folder = result.filePaths[0];
+      try {
+        if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
+        return folder;
+      } catch (err) {
+        console.error('[WLM] Failed to use chosen folder:', err);
+        return null;
+      }
+    });
+
+    ipcMain.handle('open-layout-folder', async () => {
+      const settings = layoutStore.getSettings();
+      const folder = settings.layoutFolder;
+      if (folder && fs.existsSync(folder)) {
+        await shell.openPath(folder);
+      } else {
+        // No custom folder set: open the default layouts directory.
+        const defaultFolder = path.join(app.getPath('userData'));
+        await shell.openPath(defaultFolder);
+      }
+    });
+
+    // ---------- Hotkey IPC ----------
+
+    ipcMain.handle('set-layout-hotkey', async (_event, layoutId: string, hotkey: string | null) => {
+      const layout = layoutStore.getLayout(layoutId);
+      if (!layout) return { ok: false, error: 'Layout not found' };
+
+      if (hotkey && hotkey.trim()) {
+        // Validate by attempting a trial registration, then roll it back
+        // if we re-register everything anyway in registerAllHotkeys().
+        const trial = globalShortcut.register(hotkey, () => { /* noop */ });
+        if (!trial) {
+          return { ok: false, error: `Hotkey "${hotkey}" is already in use by another application` };
+        }
+        globalShortcut.unregister(hotkey);
+      }
+
+      layoutStore.updateLayout(layoutId, { hotkey: hotkey || undefined });
+      registerAllHotkeys();
+      return { ok: true };
+    });
+
+    // ---------- Schedule IPC ----------
+
+    ipcMain.handle('set-layout-schedules', async (_event, layoutId: string, schedules: Schedule[]) => {
+      return layoutStore.setLayoutSchedules(layoutId, schedules);
+    });
   };
 
   app.whenReady().then(() => {
@@ -241,6 +441,9 @@ function bootstrap(): void {
     createWindow();
     createTray();
     setupIpcHandlers();
+    applyLoginItemSettings(layoutStore.getSettings());
+    registerAllHotkeys();
+    startScheduler();
 
     monitorWatcher.start();
   });
@@ -258,5 +461,7 @@ function bootstrap(): void {
   app.on('before-quit', () => {
     isQuitting = true;
     try { monitorWatcher?.stop(); } catch { /* ignore */ }
+    stopScheduler();
+    try { globalShortcut.unregisterAll(); } catch { /* ignore */ }
   });
 }

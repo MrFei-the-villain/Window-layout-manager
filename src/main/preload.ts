@@ -32,5 +32,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = () => callback();
     ipcRenderer.on('quick-restore-layout', handler);
     return () => { ipcRenderer.removeListener('quick-restore-layout', handler); };
-  }
+  },
+  onHotkeyRestored: (callback: (payload: { layoutName: string; result: any }) => void) => {
+    const handler = (_e: unknown, payload: { layoutName: string; result: any }) => callback(payload);
+    ipcRenderer.on('hotkey-restored', handler);
+    return () => { ipcRenderer.removeListener('hotkey-restored', handler); };
+  },
+
+  // Settings
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  updateSettings: (updates: any) => ipcRenderer.invoke('update-settings', updates),
+  chooseLayoutFolder: () => ipcRenderer.invoke('choose-layout-folder'),
+  openLayoutFolder: () => ipcRenderer.invoke('open-layout-folder'),
+
+  // Hotkeys
+  setLayoutHotkey: (layoutId: string, hotkey: string | null) =>
+    ipcRenderer.invoke('set-layout-hotkey', layoutId, hotkey),
+
+  // Schedules
+  setLayoutSchedules: (layoutId: string, schedules: any[]) =>
+    ipcRenderer.invoke('set-layout-schedules', layoutId, schedules)
 });

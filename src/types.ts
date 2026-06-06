@@ -64,6 +64,18 @@ declare global {
       isMaximized: () => Promise<boolean>;
       onQuickSaveLayout: (callback: () => void) => () => void;
       onQuickRestoreLayout: (callback: () => void) => () => void;
+
+      // Settings
+      getSettings: () => Promise<AppSettings>;
+      updateSettings: (updates: Partial<AppSettings>) => Promise<AppSettings>;
+      chooseLayoutFolder: () => Promise<string | null>;
+      openLayoutFolder: () => Promise<void>;
+
+      // Hotkeys
+      setLayoutHotkey: (layoutId: string, hotkey: string | null) => Promise<{ ok: boolean; error?: string }>;
+
+      // Schedules
+      setLayoutSchedules: (layoutId: string, schedules: Schedule[]) => Promise<SavedLayout | undefined>;
     };
   }
 }
