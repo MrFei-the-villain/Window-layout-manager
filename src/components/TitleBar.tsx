@@ -1,3 +1,5 @@
+import { AppIcon } from './AppIcon';
+
 export function TitleBar({ onSaveClick }: { onSaveClick: () => void }) {
   const handleMinimize = async () => {
     await window.electronAPI.minimizeWindow();
