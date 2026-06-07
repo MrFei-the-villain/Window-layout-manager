@@ -1636,3 +1636,13 @@ body {
   padding: 0 2px;
   user-select: none;
 }
+
+.schedule-set,
+.schedule-cancel {
+  flex-shrink: 0;
+}
+
+.schedule-set:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

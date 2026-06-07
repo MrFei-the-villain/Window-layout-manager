@@ -143,6 +143,48 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
   const [hotkeyEditingId, setHotkeyEditingId] = useState<string | null>(null);
   const [hotkeyDraft, setHotkeyDraft] = useState('');
 
+  // ---- Schedule draft state ----
+  // Edits to the schedule's time/meridiem live in a per-schedule draft map
+  // until the user clicks "Set". This prevents the time being committed
+  // to the store on every keystroke or wheel tick.
+  type ScheduleDraft = { hour: number; minute: number; mer: 'AM' | 'PM' };
+  const [scheduleDrafts, setScheduleDrafts] = useState<Record<string, ScheduleDraft>>({});
+
+  const getDraft = (sched: Schedule): ScheduleDraft => {
+    if (scheduleDrafts[sched.id]) return scheduleDrafts[sched.id];
+    const cur12 = to12Hour(sched.time);
+    const [hh, mm] = cur12.split(':').map(s => parseInt(s, 10) || 0);
+    return { hour: hh, minute: mm, mer: meridiemOf(sched.time) };
+  };
+
+  const updateDraft = (sched: Schedule, patch: Partial<ScheduleDraft>) => {
+    setScheduleDrafts(d => ({
+      ...d,
+      [sched.id]: { ...getDraft(sched), ...patch }
+    }));
+  };
+
+  const clearDraft = (schedId: string) => {
+    setScheduleDrafts(d => {
+      if (!(schedId in d)) return d;
+      const { [schedId]: _drop, ...rest } = d;
+      return rest;
+    });
+  };
+
+  const commitDraft = async (layout: SavedLayout, sched: Schedule) => {
+    const draft = getDraft(sched);
+    const safeHour = Math.max(1, Math.min(12, draft.hour || 1));
+    const safeMin = Math.max(0, Math.min(59, isNaN(draft.minute) ? 0 : draft.minute));
+    const time = to24Hour(
+      `${safeHour}:${String(safeMin).padStart(2, '0')}`,
+      draft.mer
+    );
+    await updateSchedule(layout, sched.id, { time });
+    // Drop the draft so subsequent renders pull from the freshly-saved value.
+    clearDraft(sched.id);
+  };
+
   // ---- Wheel throttle ----
   // The native wheel fires many events per second. We collapse them so the
   // user gets exactly one increment per `wheelThrottleMs` of motion, which
@@ -421,20 +463,11 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
                 <div key={sched.id} className="schedule-item">
                   <div className="schedule-time-row">
                     {(() => {
-                      const cur12 = to12Hour(sched.time);
-                      const [hh, mm] = cur12.split(':').map(s => parseInt(s, 10) || 0);
-                      const mer = meridiemOf(sched.time);
-                      const setH = (h: number) => {
-                        const safe = Math.max(1, Math.min(12, h || 1));
-                        updateSchedule(layout, sched.id, { time: to24Hour(`${safe}:${String(mm).padStart(2, '0')}`, mer) });
-                      };
-                      const setM = (m: number) => {
-                        const safe = Math.max(0, Math.min(59, isNaN(m) ? 0 : m));
-                        updateSchedule(layout, sched.id, { time: to24Hour(`${hh}:${String(safe).padStart(2, '0')}`, mer) });
-                      };
-                      const setMer = (newMer: 'AM' | 'PM') => {
-                        updateSchedule(layout, sched.id, { time: to24Hour(`${hh}:${String(mm).padStart(2, '0')}`, newMer) });
-                      };
+                      const draft = getDraft(sched);
+                      const mer = draft.mer;
+                      const hh = draft.hour;
+                      const mm = draft.minute;
+                      const isDirty = !!scheduleDrafts[sched.id];
                       return (
                         <>
                           <input
@@ -444,9 +477,9 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
                             max={12}
                             step={1}
                             value={hh}
-                            onChange={(e) => setH(parseInt(e.target.value, 10))}
-                            onBlur={(e) => setH(parseInt(e.target.value, 10))}
-                            onWheel={throttledWheel((d) => setH(bumpHour12(hh, d)))}
+                            onChange={(e) => updateDraft(sched, { hour: parseInt(e.target.value, 10) })}
+                            onBlur={(e) => updateDraft(sched, { hour: parseInt(e.target.value, 10) })}
+                            onWheel={throttledWheel((d) => updateDraft(sched, { hour: bumpHour12(draft.hour, d) }))}
                             aria-label="Hour"
                           />
                           <span className="time-separator">:</span>
@@ -457,20 +490,37 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
                             max={59}
                             step={1}
                             value={mm}
-                            onChange={(e) => setM(parseInt(e.target.value, 10))}
-                            onBlur={(e) => setM(parseInt(e.target.value, 10))}
-                            onWheel={throttledWheel((d) => setM(bumpMinute(mm, d)))}
+                            onChange={(e) => updateDraft(sched, { minute: parseInt(e.target.value, 10) })}
+                            onBlur={(e) => updateDraft(sched, { minute: parseInt(e.target.value, 10) })}
+                            onWheel={throttledWheel((d) => updateDraft(sched, { minute: bumpMinute(draft.minute, d) }))}
                             aria-label="Minute"
                           />
                           <select
                             className="input meridiem-select"
                             value={mer}
-                            onChange={(e) => setMer(e.target.value as 'AM' | 'PM')}
+                            onChange={(e) => updateDraft(sched, { mer: e.target.value as 'AM' | 'PM' })}
                             aria-label="AM or PM"
                           >
                             <option value="AM">AM</option>
                             <option value="PM">PM</option>
                           </select>
+                          <button
+                            className="btn btn-small btn-primary schedule-set"
+                            onClick={() => commitDraft(layout, sched)}
+                            disabled={!isDirty}
+                            title={isDirty ? 'Save the schedule time' : 'No changes to save'}
+                          >
+                            Set
+                          </button>
+                          {isDirty && (
+                            <button
+                              className="btn btn-small btn-secondary schedule-cancel"
+                              onClick={() => clearDraft(sched.id)}
+                              title="Discard changes and revert to the saved time"
+                            >
+                              Cancel
+                            </button>
+                          )}
                         </>
                       );
                     })()}
@@ -484,7 +534,7 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
                     </label>
                     <button
                       className="btn btn-small btn-secondary"
-                      onClick={() => removeSchedule(layout, sched.id)}
+                      onClick={() => { clearDraft(sched.id); removeSchedule(layout, sched.id); }}
                       title="Remove schedule"
                     >
                       ✕
