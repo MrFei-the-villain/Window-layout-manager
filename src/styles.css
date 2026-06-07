@@ -1608,3 +1608,31 @@ body {
   font-weight: 600;
   color: var(--accent-primary);
 }
+
+.time-hour,
+.time-minute {
+  width: 56px;
+  text-align: center;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-weight: 600;
+  color: var(--text-primary);
+  -moz-appearance: textfield;
+  appearance: textfield;
+  padding: 6px 4px;
+}
+
+.time-hour::-webkit-outer-spin-button,
+.time-hour::-webkit-inner-spin-button,
+.time-minute::-webkit-outer-spin-button,
+.time-minute::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.time-separator {
+  color: var(--text-secondary);
+  font-size: 16px;
+  font-weight: 600;
+  padding: 0 2px;
+  user-select: none;
+}

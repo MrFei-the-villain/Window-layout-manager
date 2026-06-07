@@ -143,6 +143,37 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
   const [hotkeyEditingId, setHotkeyEditingId] = useState<string | null>(null);
   const [hotkeyDraft, setHotkeyDraft] = useState('');
 
+  // ---- Wheel throttle ----
+  // The native wheel fires many events per second. We collapse them so the
+  // user gets exactly one increment per `wheelThrottleMs` of motion, which
+  // makes dialing in a time feel deliberate rather than frantic.
+  const wheelThrottleMs = 200;
+  const lastWheelRef = useRef<number>(0);
+
+  const throttledWheel = (handler: (delta: number) => void) => (e: React.WheelEvent) => {
+    e.preventDefault();
+    const now = Date.now();
+    if (now - lastWheelRef.current < wheelThrottleMs) return;
+    lastWheelRef.current = now;
+    handler(e.deltaY < 0 ? 1 : -1);
+  };
+
+  /** Adjust a 12-hour hour value (1..12) by `delta`, wrapping inside the range. */
+  const bumpHour12 = (h: number, delta: number): number => {
+    let next = h + delta;
+    if (next < 1) next = 12;
+    if (next > 12) next = 1;
+    return next;
+  };
+
+  /** Adjust a minute value (0..59) by `delta`, NOT wrapping the hour. */
+  const bumpMinute = (m: number, delta: number): number => {
+    let next = m + delta;
+    while (next < 0) next += 60;
+    while (next > 59) next -= 60;
+    return next;
+  };
+
   const startHotkeyEdit = (layout: SavedLayout) => {
     setHotkeyEditingId(layout.id);
     setHotkeyDraft(layout.hotkey || '');
@@ -389,41 +420,60 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
               {(layout.schedules || []).map(sched => (
                 <div key={sched.id} className="schedule-item">
                   <div className="schedule-time-row">
-                    <input
-                      type="time"
-                      className="input time-input"
-                      value={to12Hour(sched.time)}
-                      onChange={(e) => updateSchedule(layout, sched.id, { time: to24Hour(e.target.value, meridiemOf(sched.time)) })}
-                      onWheel={(e) => {
-                        // The native time input scrolls in big jumps (typically
-                        // 1 hour per wheel tick, sometimes more on high-DPI mice).
-                        // We intercept the wheel and nudge the minute field by 1
-                        // per tick so the user can dial in a time precisely.
-                        e.preventDefault();
-                        const cur = to12Hour(sched.time);
-                        const m = /^(\d{1,2}):(\d{2})$/.exec(cur);
-                        if (!m) return;
-                        let h = parseInt(m[1], 10);
-                        let mm = parseInt(m[2], 10);
-                        const delta = e.deltaY < 0 ? 1 : -1;
-                        mm += delta;
-                        if (mm < 0) { mm = 59; h = h === 1 ? 12 : h - 1; }
-                        if (mm > 59) { mm = 0; h = h === 12 ? 1 : h + 1; }
-                        if (h < 1) h = 12;
-                        if (h > 12) h = 1;
-                        const new12 = `${h}:${String(mm).padStart(2, '0')}`;
-                        updateSchedule(layout, sched.id, { time: to24Hour(new12, meridiemOf(sched.time)) });
-                      }}
-                    />
-                    <select
-                      className="input meridiem-select"
-                      value={meridiemOf(sched.time)}
-                      onChange={(e) => updateSchedule(layout, sched.id, { time: to24Hour(to12Hour(sched.time), e.target.value as 'AM' | 'PM') })}
-                      aria-label="AM or PM"
-                    >
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                    </select>
+                    {(() => {
+                      const cur12 = to12Hour(sched.time);
+                      const [hh, mm] = cur12.split(':').map(s => parseInt(s, 10) || 0);
+                      const mer = meridiemOf(sched.time);
+                      const setH = (h: number) => {
+                        const safe = Math.max(1, Math.min(12, h || 1));
+                        updateSchedule(layout, sched.id, { time: to24Hour(`${safe}:${String(mm).padStart(2, '0')}`, mer) });
+                      };
+                      const setM = (m: number) => {
+                        const safe = Math.max(0, Math.min(59, isNaN(m) ? 0 : m));
+                        updateSchedule(layout, sched.id, { time: to24Hour(`${hh}:${String(safe).padStart(2, '0')}`, mer) });
+                      };
+                      const setMer = (newMer: 'AM' | 'PM') => {
+                        updateSchedule(layout, sched.id, { time: to24Hour(`${hh}:${String(mm).padStart(2, '0')}`, newMer) });
+                      };
+                      return (
+                        <>
+                          <input
+                            type="number"
+                            className="input time-hour"
+                            min={1}
+                            max={12}
+                            step={1}
+                            value={hh}
+                            onChange={(e) => setH(parseInt(e.target.value, 10))}
+                            onBlur={(e) => setH(parseInt(e.target.value, 10))}
+                            onWheel={throttledWheel((d) => setH(bumpHour12(hh, d)))}
+                            aria-label="Hour"
+                          />
+                          <span className="time-separator">:</span>
+                          <input
+                            type="number"
+                            className="input time-minute"
+                            min={0}
+                            max={59}
+                            step={1}
+                            value={mm}
+                            onChange={(e) => setM(parseInt(e.target.value, 10))}
+                            onBlur={(e) => setM(parseInt(e.target.value, 10))}
+                            onWheel={throttledWheel((d) => setM(bumpMinute(mm, d)))}
+                            aria-label="Minute"
+                          />
+                          <select
+                            className="input meridiem-select"
+                            value={mer}
+                            onChange={(e) => setMer(e.target.value as 'AM' | 'PM')}
+                            aria-label="AM or PM"
+                          >
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                          </select>
+                        </>
+                      );
+                    })()}
                     <label className="schedule-launch">
                       <input
                         type="checkbox"
