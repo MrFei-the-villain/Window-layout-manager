@@ -6,6 +6,7 @@ import { TitleBar } from './components/TitleBar';
 import { About } from './components/About';
 import { Toast } from './components/Toast';
 import { Preferences } from './components/Preferences';
+import { AppIcon } from './components/AppIcon';
 
 export type TabType = 'layouts' | 'windows' | 'preferences' | 'about';
 
@@ -77,34 +78,36 @@ export function App() {
       <TitleBar onSaveClick={() => setShowSaveModal(true)} />
 
       <div className="tab-bar">
-        <button
-          className={`tab ${activeTab === 'layouts' ? 'active' : ''}`}
-          onClick={() => setActiveTab('layouts')}
-        >
-          <span className="tab-icon">📁</span>
-          Saved Layouts
-        </button>
-        <button
-          className={`tab ${activeTab === 'windows' ? 'active' : ''}`}
-          onClick={() => setActiveTab('windows')}
-        >
-          <span className="tab-icon">🪟</span>
-          Current Windows
-        </button>
-        <button
-          className={`tab ${activeTab === 'preferences' ? 'active' : ''}`}
-          onClick={() => setActiveTab('preferences')}
-        >
-          <span className="tab-icon">⚙️</span>
-          Preferences
-        </button>
-        <button
-          className={`tab ${activeTab === 'about' ? 'active' : ''}`}
-          onClick={() => setActiveTab('about')}
-        >
-          <span className="tab-icon">ℹ️</span>
-          About
-        </button>
+        <div className="tab-bar-brand">
+          <AppIcon size={28} className="tab-bar-brand-icon" />
+          <span className="tab-bar-brand-text">Window Layout Manager</span>
+        </div>
+        <div className="tab-bar-tabs">
+          <button
+            className={`tab ${activeTab === 'layouts' ? 'active' : ''}`}
+            onClick={() => setActiveTab('layouts')}
+          >
+            Saved Layouts
+          </button>
+          <button
+            className={`tab ${activeTab === 'windows' ? 'active' : ''}`}
+            onClick={() => setActiveTab('windows')}
+          >
+            Current Windows
+          </button>
+          <button
+            className={`tab ${activeTab === 'preferences' ? 'active' : ''}`}
+            onClick={() => setActiveTab('preferences')}
+          >
+            Preferences
+          </button>
+          <button
+            className={`tab ${activeTab === 'about' ? 'active' : ''}`}
+            onClick={() => setActiveTab('about')}
+          >
+            About
+          </button>
+        </div>
       </div>
 
       <div className="content">

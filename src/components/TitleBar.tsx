@@ -14,22 +14,7 @@ export function TitleBar({ onSaveClick }: { onSaveClick: () => void }) {
   return (
     <div className="title-bar">
       <div className="title-bar-drag">
-        <svg
-          className="title-bar-icon-svg"
-          width="18"
-          height="18"
-          viewBox="0 0 512 512"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-hidden="true"
-        >
-          <rect width="512" height="512" rx="96" ry="96" fill="currentColor" opacity="0.15"/>
-          <g fill="none" stroke="currentColor" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="124" y1="292" x2="204" y2="292"/>
-            <rect x="256" y="252" width="80" height="80" rx="6" ry="6"/>
-            <line x1="408" y1="252" x2="488" y2="332"/>
-            <line x1="488" y1="252" x2="408" y2="332"/>
-          </g>
-        </svg>
+        <AppIcon size={22} className="title-bar-icon-img" />
         <span className="title-bar-title">Window Layout Manager</span>
       </div>
       <div className="title-bar-actions">

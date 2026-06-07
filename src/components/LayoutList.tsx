@@ -298,7 +298,7 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
   if (layouts.length === 0) {
     return (
       <div className="empty-state">
-        <div className="empty-icon">📁</div>
+        <AppIcon size={96} className="empty-icon-img" />
         <h3>No Saved Layouts</h3>
         <p>Click "Save Layout" to capture your current window arrangement.</p>
         <p className="hint">Layouts remember window positions, sizes, and monitor assignments.</p>

@@ -68,6 +68,14 @@ body {
   font-size: 18px;
 }
 
+.title-bar-icon-img {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
 .title-bar-icon-svg {
   width: 18px;
   height: 18px;
@@ -188,24 +196,60 @@ body {
 
 .tab-bar {
   display: flex;
+  align-items: center;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
-  padding: 0 16px;
+  padding: 0 8px;
+  -webkit-app-region: drag;
+  gap: 16px;
+  min-height: 48px;
+}
+
+.tab-bar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+}
+
+.tab-bar-brand-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.tab-bar-brand-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.tab-bar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  -webkit-app-region: no-drag;
+  overflow-x: auto;
 }
 
 .tab {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 20px;
   background: transparent;
   border: none;
   color: var(--text-secondary);
-  cursor: pointer;
+  padding: 10px 18px;
   font-size: 13px;
   font-weight: 500;
+  cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
+  white-space: nowrap;
 }
 
 .tab:hover {
@@ -266,14 +310,23 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 300px;
   text-align: center;
+  padding: 60px 24px;
+  flex: 1;
+  min-height: 400px;
+  gap: 12px;
+  background: linear-gradient(180deg,
+    rgba(74, 158, 255, 0.04) 0%,
+    rgba(74, 158, 255, 0) 60%);
+  border-radius: var(--radius-lg);
 }
 
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
+.empty-icon-img {
+  width: 96px !important;
+  height: 96px !important;
+  margin-bottom: 8px;
+  opacity: 0.85;
+  filter: drop-shadow(0 6px 16px rgba(74, 158, 255, 0.35));
 }
 
 .empty-state h3 {
