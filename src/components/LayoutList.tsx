@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { SavedLayout, Schedule } from '../types';
+import { AppIcon } from './AppIcon';
 
 interface LayoutListProps {
   addToast: (message: string, type: 'success' | 'error' | 'info') => void;
