@@ -1,6 +1,6 @@
 {
   "name": "window-layout-manager",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Save and restore window layouts across monitors and sessions on Windows",
   "main": "dist/main/main.js",
   "scripts": {

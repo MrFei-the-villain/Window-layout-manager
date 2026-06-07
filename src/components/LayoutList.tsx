@@ -394,6 +394,26 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
                       className="input time-input"
                       value={to12Hour(sched.time)}
                       onChange={(e) => updateSchedule(layout, sched.id, { time: to24Hour(e.target.value, meridiemOf(sched.time)) })}
+                      onWheel={(e) => {
+                        // The native time input scrolls in big jumps (typically
+                        // 1 hour per wheel tick, sometimes more on high-DPI mice).
+                        // We intercept the wheel and nudge the minute field by 1
+                        // per tick so the user can dial in a time precisely.
+                        e.preventDefault();
+                        const cur = to12Hour(sched.time);
+                        const m = /^(\d{1,2}):(\d{2})$/.exec(cur);
+                        if (!m) return;
+                        let h = parseInt(m[1], 10);
+                        let mm = parseInt(m[2], 10);
+                        const delta = e.deltaY < 0 ? 1 : -1;
+                        mm += delta;
+                        if (mm < 0) { mm = 59; h = h === 1 ? 12 : h - 1; }
+                        if (mm > 59) { mm = 0; h = h === 12 ? 1 : h + 1; }
+                        if (h < 1) h = 12;
+                        if (h > 12) h = 1;
+                        const new12 = `${h}:${String(mm).padStart(2, '0')}`;
+                        updateSchedule(layout, sched.id, { time: to24Hour(new12, meridiemOf(sched.time)) });
+                      }}
                     />
                     <select
                       className="input meridiem-select"

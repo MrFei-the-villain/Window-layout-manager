@@ -107,7 +107,9 @@ function bootstrap(): void {
   const createTray = (): void => {
     // Tray icons should be native 16x16 for crisp rendering on standard DPI
     // displays. We have a dedicated rasterized asset for exactly this size.
-    const iconPath = path.join(__dirname, '../assets/icon-16.png');
+    // NOTE: the assets live at the asar root, not inside dist/, so we need
+    // TWO levels of "..": __dirname is dist/main/, so ../../assets/ is correct.
+    const iconPath = path.join(__dirname, '../../assets/icon-16.png');
     const icon = nativeImage.createFromPath(iconPath);
     tray = new Tray(icon);
 

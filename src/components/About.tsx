@@ -17,7 +17,7 @@ export function About({ addToast: _addToast }: AboutProps) {
           >
             <rect width="512" height="512" rx="96" ry="96" fill="currentColor" opacity="0.15"/>
             <g fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="124" y1="372" x2="204" y2="372"/>
+              <line x1="124" y1="292" x2="204" y2="292"/>
               <rect x="256" y="252" width="80" height="80" rx="6" ry="6"/>
               <line x1="408" y1="252" x2="488" y2="332"/>
               <line x1="488" y1="252" x2="408" y2="332"/>
@@ -25,7 +25,7 @@ export function About({ addToast: _addToast }: AboutProps) {
           </svg>
           <div>
             <h2>Window Layout Manager</h2>
-            <p className="about-version">Version 1.1.1</p>
+            <p className="about-version">Version 1.1.2</p>
           </div>
         </div>
 
