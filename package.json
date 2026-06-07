@@ -47,11 +47,25 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "publisherName": "Window Layout Manager",
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
-      "oneClick": true,
-      "perMachine": false
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Window Layout Manager",
+      "installerLanguages": ["en_US"],
+      "displayLanguageSelector": false,
+      "license": "LICENSE",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "uninstallDisplayName": "Window Layout Manager",
+      "artifactName": "${productName} Setup ${version}.${ext}"
     }
   }
 }
