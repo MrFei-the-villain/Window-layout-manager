@@ -1534,6 +1534,20 @@ body {
   flex: 1;
 }
 
+.hotkey-select {
+  flex: 0 0 auto;
+  min-width: 180px;
+  max-width: 240px;
+  cursor: pointer;
+}
+
+.hotkey-custom-input {
+  flex: 1;
+  min-width: 200px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+}
+
 .hotkey-value {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);

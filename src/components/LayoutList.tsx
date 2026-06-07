@@ -38,6 +38,98 @@ function to24Hour(h12: string, meridiem: 'AM' | 'PM'): string {
   return `${String(h).padStart(2, '0')}:${m[2]}`;
 }
 
+/**
+ * Global hotkey presets. The first entry (`''`) means "no hotkey assigned".
+ * `CommandOrControl+Alt+N` is the cross-platform accelerator — Electron
+ * resolves it to `Ctrl` on Windows and `Cmd` on macOS.
+ *
+ * The first 9 numeric slots (Ctrl+Alt+1 through 9) cover the common
+ * "switch between my 9 favorite layouts" pattern. A "Custom" slot lets
+ * the user keep a previously-set custom accelerator without losing it.
+ */
+const HOTKEY_PRESETS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'None' },
+  ...Array.from({ length: 9 }, (_, i) => ({
+    value: `CommandOrControl+Alt+${i + 1}`,
+    label: `Ctrl + Alt + ${i + 1}`
+  })),
+  { value: '__custom__', label: 'Custom…' }
+];
+
+function isPresetHotkey(h: string | undefined): boolean {
+  if (!h) return false;
+  return HOTKEY_PRESETS.some(p => p.value === h);
+}
+
+/**
+ * Inline editor shown next to the hotkey preset dropdown when the current
+ * hotkey is not one of the presets. Lets the user edit a custom Electron
+ * accelerator (e.g. "F12") without losing the value they've already saved.
+ */
+function CustomHotkeyEditor({
+  layout,
+  initialValue,
+  onSave
+}: {
+  layout: SavedLayout;
+  initialValue: string;
+  onSave: (value: string | null) => void;
+}) {
+  const [draft, setDraft] = useState(initialValue);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Keep the local draft in sync if the layout's hotkey changes from outside
+  // (e.g. another tab/window updated it). Without this, switching to a preset
+  // and back to Custom would still show the stale value.
+  useEffect(() => {
+    setDraft(initialValue);
+  }, [initialValue]);
+
+  const commit = () => {
+    onSave(draft.trim() || null);
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="text"
+        className="input hotkey-custom-input"
+        value={draft}
+        placeholder="e.g. F12"
+        spellCheck={false}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            setDraft(initialValue);
+            inputRef.current?.blur();
+          }
+        }}
+        aria-label={`Custom hotkey for ${layout.name}`}
+      />
+      <button
+        className="btn btn-small btn-primary"
+        onClick={commit}
+        disabled={draft.trim() === initialValue}
+        title="Save the custom hotkey"
+      >
+        Set
+      </button>
+      <button
+        className="btn btn-small btn-secondary"
+        onClick={() => onSave(null)}
+        title="Clear the hotkey"
+      >
+        Clear
+      </button>
+    </>
+  );
+}
+
 export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
   const [layouts, setLayouts] = useState<SavedLayout[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,8 +232,26 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
   };
 
   // ---- Hotkey editor ----
-  const [hotkeyEditingId, setHotkeyEditingId] = useState<string | null>(null);
-  const [hotkeyDraft, setHotkeyDraft] = useState('');
+  // The hotkey is a free-form Electron accelerator (e.g. `CommandOrControl+Alt+1`).
+  // We expose nine preset slots (Ctrl+Alt+1..9) plus None, so the common case
+  // is a single click. A "Custom..." fallback keeps any pre-existing custom
+  // hotkey editable without losing it.
+  const setHotkeyValue = async (layout: SavedLayout, value: string | null) => {
+    const result = await window.electronAPI.setLayoutHotkey(layout.id, value);
+    if (result.ok) {
+      setLayouts(layouts.map(l =>
+        l.id === layout.id ? { ...l, hotkey: value || undefined } : l
+      ));
+      addToast(value ? `Hotkey set: ${value}` : 'Hotkey cleared', 'success');
+    } else {
+      addToast(result.error || 'Failed to set hotkey', 'error');
+    }
+  };
+
+  const handlePresetChange = (layout: SavedLayout, value: string) => {
+    if (value === '__custom__') return; // Custom is handled by the text input
+    void setHotkeyValue(layout, value || null);
+  };
 
   // ---- Schedule draft state ----
   // Edits to the schedule's time/meridiem live in a per-schedule draft map
@@ -214,33 +324,6 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
     while (next < 0) next += 60;
     while (next > 59) next -= 60;
     return next;
-  };
-
-  const startHotkeyEdit = (layout: SavedLayout) => {
-    setHotkeyEditingId(layout.id);
-    setHotkeyDraft(layout.hotkey || '');
-  };
-  const cancelHotkeyEdit = () => {
-    setHotkeyEditingId(null);
-    setHotkeyDraft('');
-  };
-  const saveHotkey = async (layout: SavedLayout) => {
-    const next = hotkeyDraft.trim() || null;
-    const result = await window.electronAPI.setLayoutHotkey(layout.id, next);
-    if (result.ok) {
-      setLayouts(layouts.map(l => l.id === layout.id ? { ...l, hotkey: next || undefined } : l));
-      addToast(next ? `Hotkey set: ${next}` : 'Hotkey cleared', 'success');
-    } else {
-      addToast(result.error || 'Failed to set hotkey', 'error');
-    }
-    cancelHotkeyEdit();
-  };
-  const clearHotkey = async (layout: SavedLayout) => {
-    const result = await window.electronAPI.setLayoutHotkey(layout.id, null);
-    if (result.ok) {
-      setLayouts(layouts.map(l => l.id === layout.id ? { ...l, hotkey: undefined } : l));
-      addToast('Hotkey cleared', 'info');
-    }
   };
 
   // ---- Schedule editor ----
@@ -416,40 +499,43 @@ export function LayoutList({ addToast, refreshKey }: LayoutListProps) {
           {/* Hotkey editor */}
           <div className="layout-row">
             <div className="layout-row-label">⌨ Hotkey:</div>
-            {hotkeyEditingId === layout.id ? (
-              <div className="hotkey-edit">
-                <input
-                  type="text"
-                  className="input"
-                  value={hotkeyDraft}
-                  placeholder="e.g. CommandOrControl+Alt+1"
-                  onChange={(e) => setHotkeyDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void saveHotkey(layout);
-                    else if (e.key === 'Escape') cancelHotkeyEdit();
-                  }}
-                  autoFocus
-                />
-                <button className="btn btn-small btn-primary" onClick={() => saveHotkey(layout)}>Save</button>
-                <button className="btn btn-small btn-secondary" onClick={cancelHotkeyEdit}>Cancel</button>
-              </div>
-            ) : (
-              <div className="hotkey-display">
-                <code className="hotkey-value">{layout.hotkey || 'none'}</code>
-                <button className="btn btn-small btn-secondary" onClick={() => startHotkeyEdit(layout)}>
-                  {layout.hotkey ? 'Change' : 'Set'}
-                </button>
-                {layout.hotkey && (
-                  <button className="btn btn-small btn-secondary" onClick={() => clearHotkey(layout)}>
-                    Clear
-                  </button>
-                )}
-              </div>
-            )}
+            {(() => {
+              const currentHotkey = layout.hotkey || '';
+              const isCustom = currentHotkey !== '' && !isPresetHotkey(currentHotkey);
+              // When the current value is a non-preset accelerator (e.g. "F12"
+              // set in a previous version), reflect that in the select by
+              // mapping it to the "Custom..." sentinel option.
+              const selectValue = isCustom ? '__custom__' : currentHotkey;
+              return (
+                <div className="hotkey-edit">
+                  <select
+                    className="input hotkey-select"
+                    value={selectValue}
+                    onChange={(e) => handlePresetChange(layout, e.target.value)}
+                    title="Pick a system-wide shortcut that restores this layout"
+                    aria-label="Hotkey preset"
+                  >
+                    {HOTKEY_PRESETS.map(p => (
+                      <option key={p.value || 'none'} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                  {isCustom && (
+                    <CustomHotkeyEditor
+                      layout={layout}
+                      initialValue={currentHotkey}
+                      onSave={(value) => setHotkeyValue(layout, value)}
+                    />
+                  )}
+                </div>
+              );
+            })()}
           </div>
           <p className="row-hint">
-            System-wide shortcut that restores this layout. Use Electron accelerator format
-            (e.g. <code>CommandOrControl+Alt+1</code>). The app must be running for the hotkey to work.
+            System-wide shortcut that restores this layout. Pick a preset for a
+            one-click bind, or use Custom for any Electron accelerator (e.g. <code>F12</code>).
+            The app must be running for the hotkey to work.
           </p>
 
           {/* Schedule editor */}

@@ -170,19 +170,35 @@ function bootstrap(): void {
     }
   }
 
-  async function triggerLayoutRestore(layout: SavedLayout, launchApps: boolean): Promise<void> {
+  // Single source of truth for "restore this layout". Used by:
+  //   - the global hotkey callback (registerAllHotkeys)
+  //   - the scheduler tick
+  //   - the renderer's "Restore" / "Restore with launch" buttons (via IPC)
+  // Every restore path therefore logs, surfaces the main window, and emits
+  // the same `hotkey-restored` event the renderer listens for.
+  async function triggerLayoutRestore(layout: SavedLayout, launchApps: boolean): Promise<any> {
     try {
-      const result = launchApps
-        ? await windowManager.restoreLayout(layout, true)
-        : await windowManager.restoreLayout(layout, false);
-      console.log('[WLM] Hotkey restore result:', result);
+      const result = await windowManager.restoreLayout(layout, launchApps);
+      console.log('[WLM] Restore result for', layout.name, '(launchApps=' + launchApps + '):', result);
       // Briefly show the main window so the user gets visual feedback.
       if (mainWindow) {
         mainWindow.show();
         mainWindow.webContents.send('hotkey-restored', { layoutName: layout.name, result });
       }
+      return result;
     } catch (error) {
-      console.error('[WLM] Hotkey restore error:', error);
+      console.error('[WLM] Restore error for', layout.name, error);
+      const errorResult = {
+        success: false,
+        restoredCount: 0,
+        launchedCount: 0,
+        failedCount: 0,
+        errors: [error instanceof Error ? error.message : String(error)]
+      };
+      if (mainWindow) {
+        mainWindow.webContents.send('hotkey-restored', { layoutName: layout.name, result: errorResult });
+      }
+      return errorResult;
     }
   }
 
@@ -307,8 +323,7 @@ function bootstrap(): void {
     ipcMain.handle('restore-layout', async (_event, layoutId: string) => {
       const layout = layoutStore.getLayout(layoutId);
       if (!layout) return { success: false, restoredCount: 0, launchedCount: 0, failedCount: 0, errors: ['Layout not found'] };
-
-      const result = await windowManager.restoreLayout(layout, false);
+      const result = await triggerLayoutRestore(layout, false);
       layoutStore.setCurrentLayout(layoutId);
       return result;
     });
@@ -316,8 +331,7 @@ function bootstrap(): void {
     ipcMain.handle('restore-layout-with-launch', async (_event, layoutId: string) => {
       const layout = layoutStore.getLayout(layoutId);
       if (!layout) return { success: false, restoredCount: 0, launchedCount: 0, failedCount: 0, errors: ['Layout not found'] };
-
-      const result = await windowManager.restoreLayout(layout, true);
+      const result = await triggerLayoutRestore(layout, true);
       layoutStore.setCurrentLayout(layoutId);
       return result;
     });
